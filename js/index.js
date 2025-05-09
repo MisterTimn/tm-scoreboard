@@ -15,7 +15,6 @@
 	var isAnimating = false; // Track if animation is in progress
 
 	var main = document.querySelector("main");
-	var fileInput = document.querySelector("#file-input");
 	var playButton = document.querySelector("#play-button");
 
 	// Load saved state from localStorage if available
@@ -132,10 +131,15 @@
 		// First row contains headers
 		const headers = values[0];
 
-		// Check if we have task columns (everything after the first column)
-		taskColumns = headers.slice(1).filter(function(header) {
-			return header.trim() !== '';
-		});
+		// Check if we have at least 3 columns (Name, Total, and at least one Task)
+		if (headers.length < 3) {
+			console.error("Spreadsheet format incorrect. Expected at least 3 columns: Name, Total, and Tasks");
+			return [];
+		}
+
+		// Task columns start from the third column (index 2) onwards
+		// Skip the Name column (index 0) and Total column (index 1)
+		taskColumns = headers.slice(2).filter(header => header.trim() !== '');
 
 		// Process contestant data
 		const sheetData = [];
@@ -145,13 +149,15 @@
 
 			const entry = {
 				name: row[0],
+				 // Total column is just stored for reference, not used directly for scoring
+				totalFromSheet: row[1] ? parseFloat(row[1]) || 0 : 0,
 				taskScores: {}
 			};
 
-			// Process task scores
+			// Process task scores starting from column 3 (index 2)
 			for (let j = 0; j < taskColumns.length; j++) {
 				const taskName = taskColumns[j];
-				const taskValue = row[j + 1] ? row[j + 1].trim() : '';
+				const taskValue = row[j + 2] ? row[j + 2].trim() : ''; // Add +2 to account for Name and Total columns
 				if (taskValue !== '') {
 					entry.taskScores[taskName] = parseFloat(taskValue) || 0;
 				}
@@ -176,19 +182,7 @@
 			if (isComplete) {
 				completedTasks.push(taskName);
 			}
-		}
-
-		// Calculate total scores for completed tasks
-		for (let i = 0; i < sheetData.length; i++) {
-			let totalScore = 0;
-			for (let j = 0; j < completedTasks.length; j++) {
-				const taskName = completedTasks[j];
-				if (taskName in sheetData[i].taskScores) {
-					totalScore += sheetData[i].taskScores[taskName];
-				}
-			}
-			sheetData[i].score = totalScore;
-		}
+		 }
 
 		// Update last fetch time
 		lastFetchTime = new Date().getTime();
@@ -507,6 +501,11 @@
 						// Animation complete
 						isAnimating = false;
 						playButton.classList.remove('loading');
+
+						// If auto-iterate is enabled, continue to the next animation
+						if (CONFIG.AUTO_ITERATE) {
+							setTimeout(continueIteration, 2000); // Wait 2 seconds before starting next iteration
+						}
 					}
 				};
 
