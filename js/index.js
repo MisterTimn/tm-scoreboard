@@ -501,7 +501,8 @@
 		// Mark as animating
 		isAnimating = true;
 
-		// Don't hide the play button anymore
+		playButton.classList.remove('has-updates');
+		playButton.classList.remove('no-updates');
 		playButton.classList.add('loading');
 
 		// Check for new data from Google Sheets
@@ -509,6 +510,7 @@
 		const hasChanges = updateScores(sheetData);
 
 		if (hasChanges) {
+			playButton.classList.add('has-updates');
 			// First update the old score display for any animations
 			for (let i = 0; i < contestants.length; i++) {
 				const scoreEl = contestants[i].el?.querySelector(".score");
@@ -562,19 +564,13 @@
 						// Animation complete
 						isAnimating = false;
 						playButton.classList.remove('loading');
-
-						// If auto-iterate is enabled, continue to the next animation
-						if (CONFIG.AUTO_ITERATE) {
-							setTimeout(continueIteration, 2000); // Wait 2 seconds before starting next iteration
-						}
 					}
 				};
 
 				window.requestAnimationFrame(loop);
 			}, 1000);
 		} else {
-			// If no changes, show a message
-			alert("No new scores detected. Check your Google Sheet for updates.");
+			playButton.classList.add('no-updates');
 			isAnimating = false;
 			playButton.classList.remove('loading');
 		}

@@ -364,7 +364,11 @@ noscript h1 {
 }
 
 #play-button.has-updates {
-	animation: flash 1s 2;
+	animation: flash-green 0.5s ease-in-out 3; /* 0.5s duration * 3 iterations = 1.5s */
+}
+
+#play-button.no-updates {
+	animation: flash-red 0.5s ease-in-out 2; /* 0.5s duration * 2 iterations = 1.0s */
 }
 
 @keyframes pulsate {
@@ -373,9 +377,25 @@ noscript h1 {
 	100% { transform: scale(1); }
 }
 
-@keyframes flash {
-	0%, 100% { background: rgba(0, 0, 0, 0.2); }
-	50% { background: rgba(76, 175, 80, 0.8); }
+@keyframes flash-green {
+	0% { background-color: #4CAF50; transform: scale(1); }
+	50% { background-color: #66BB6A; transform: scale(1.05); }
+	100% { background-color: #4CAF50; transform: scale(1); }
+}
+
+@keyframes flash-red {
+	0% {
+		background-color: #ff4136; /* Red */
+		transform: scale(1);
+	}
+	50% {
+		background-color: #ff766e; /* Lighter red */
+		transform: scale(1.05);
+	}
+	100% {
+		background-color: #ff4136; /* Red */
+		transform: scale(1);
+	}
 }
 
 .exit-button {
