@@ -3,10 +3,6 @@
  */
 
 (function() {
-	const GOOGLE_SHEETS_API_KEY = CONFIG.GOOGLE_SHEETS_API_KEY;
-	const SPREADSHEET_ID = CONFIG.SPREADSHEET_ID;
-	const SHEET_NAME = CONFIG.SHEET_NAME;
-
 	var contestants = [];
 	var locked = true; // Start with locked = true to disable add button
 	var taskColumns = []; // Store task column names
@@ -72,14 +68,13 @@
 		return `./images/portraits/${simpleName}.png`;
 	}
 
-	// Fetch data from Google Sheets
+	// Fetch data from backend API
 	async function fetchSheetData() {
 		try {
 			playButton.classList.add('loading');
 
-			// Construct the Google Sheets API URL
-			const range = encodeURIComponent(SHEET_NAME);
-			const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${GOOGLE_SHEETS_API_KEY}`;
+			// Fetch data from the backend API
+			const url = '/api/sheet-data';
 
 			const response = await fetch(url);
 			if (!response.ok) {
