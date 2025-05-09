@@ -168,53 +168,77 @@
 		return sheetData;
 	}
 
-	// Check for score changes and update contestants
+	// Update scores from sheet data
 	function updateScores(sheetData) {
 		if (!sheetData || sheetData.length === 0) return false;
 
 		var hasChanges = false;
 		var previousCompletedTasks = completedTasks.length;
 
-		// If we have fewer contestants than sheet entries, add new ones
-		while (contestants.length < sheetData.length) {
-			const newContestant = sheetData[contestants.length];
-			// Use the portrait image based on name
-			addContestant(getPortraitImage(newContestant.name), newContestant.name);
-			hasChanges = true;
+		 // Create an array of sheet entries indexed by name for easy lookup
+		const sheetEntriesByName = {};
+		for (let i = 0; i < sheetData.length; i++) {
+			sheetEntriesByName[sheetData[i].name] = sheetData[i];
 		}
 
-		// Update scores from sheet data
-		for (let i = 0; i < contestants.length && i < sheetData.length; i++) {
+		// Update existing contestants or create new ones
+		const updatedContestants = [];
+
+		// First, update existing contestants with matching names
+		for (let i = 0; i < sheetData.length; i++) {
 			const sheetEntry = sheetData[i];
-			const contestant = contestants[i];
 
-			// Update task scores
-			contestant.taskScores = sheetEntry.taskScores || {};
+			// Find existing contestant with matching name
+			const existingContestant = contestants.find(c => c.name === sheetEntry.name);
 
-			// Calculate new score based on completed tasks
-			let newScore = 0;
-			for (let j = 0; j < completedTasks.length; j++) {
-				const taskName = completedTasks[j];
-				if (taskName in contestant.taskScores) {
-					newScore += contestant.taskScores[taskName];
+			if (existingContestant) {
+				// Update task scores
+				existingContestant.taskScores = sheetEntry.taskScores || {};
+
+				// Calculate new score based on completed tasks
+				let newScore = 0;
+				for (let j = 0; j < completedTasks.length; j++) {
+					const taskName = completedTasks[j];
+					if (taskName in existingContestant.taskScores) {
+						newScore += existingContestant.taskScores[taskName];
+					}
 				}
-			}
 
-			// Check if the score has changed
-			if (contestant.score !== newScore) {
-				contestant.score = newScore;
-				// Also update oldScore to match when loading fresh data
-				contestant.oldScore = newScore;
-				hasChanges = true;
-			}
+				// Check if score has changed
+				if (existingContestant.score !== newScore) {
+					existingContestant.score = newScore;
+					// Keep oldScore as is for animation
+					hasChanges = true;
+				}
 
-			// Update contestant name and possibly portrait if needed
-			if (sheetEntry.name && contestant.name !== sheetEntry.name) {
-				contestant.name = sheetEntry.name;
-				contestant.image = getPortraitImage(sheetEntry.name);
+				updatedContestants.push(existingContestant);
+			} else {
+				// Create new contestant
+				const newContestant = {
+					name: sheetEntry.name,
+					image: getPortraitImage(sheetEntry.name),
+					taskScores: sheetEntry.taskScores || {},
+					score: 0,
+					oldScore: 0,
+					el: null
+				};
+
+				// Calculate score
+				for (let j = 0; j < completedTasks.length; j++) {
+					const taskName = completedTasks[j];
+					if (taskName in newContestant.taskScores) {
+						newContestant.score += newContestant.taskScores[taskName];
+						newContestant.oldScore = newContestant.score; // Initialize oldScore to match
+					}
+				}
+
+				updatedContestants.push(newContestant);
 				hasChanges = true;
 			}
 		}
+
+		// Replace contestants array with updated array
+		contestants = updatedContestants;
 
 		// Check if a new task has been completed
 		if (completedTasks.length > previousCompletedTasks) {
@@ -342,91 +366,80 @@
 	}
 
 	// Refresh contestant display - with improved animation support
-	function refreshContestants() {
-		// If we already have elements, just update them rather than recreating
-		if (contestants.length > 0 && contestants[0].el) {
-			// Check if the element is in the DOM using a safe method
-			var isInDOM = false;
-			try {
-				isInDOM = document.body.contains(contestants[0].el);
-			} catch (e) {
-				console.log("DOM check failed, will recreate elements:", e);
-			}
-
-			if (isInDOM) {
-				// Update the existing elements - don't recreate them
-				for (var i = 0; i < contestants.length; i++) {
-					var con = contestants[i];
-
-					// Update score display
-					var scoreEl = con.el.querySelector(".score");
-					if (scoreEl) {
-						scoreEl.innerText = con.oldScore;
-					}
-				}
-
-				// Apply the transforms to enable animation
-				transformContestants();
-				return;
-			}
-		}
-
+	function refreshContestants(animate = false) {
 		// If we need to recreate everything (first time or after DOM changes)
-		main.innerHTML = "";
+		if (!animate || contestants.length === 0 || !contestants[0].el || !document.body.contains(contestants[0].el)) {
+			main.innerHTML = "";
 
-		// First create all contestant elements
-		for (var i = 0; i < contestants.length; i++) {
-			var con = contestants[i];
-			var cEl = createContestantEl(con, i + 1);
-			con.el = cEl;
+			// First create all contestant elements
+			for (var i = 0; i < contestants.length; i++) {
+				var con = contestants[i];
+				var cEl = createContestantEl(con, i + 1);
+				con.el = cEl;
 
-			// Add to the DOM immediately so we can animate later
-			main.appendChild(cEl);
-		}
+				// Add to the DOM immediately
+				main.appendChild(cEl);
+			}
 
-		// Determine if we should use two rows layout
-		const useDoubleRow = contestants.length > 5;
-		const contestantsPerRow = useDoubleRow ? Math.ceil(contestants.length / 2) : contestants.length;
+			// Determine if we should use two rows layout
+			const useDoubleRow = contestants.length > 5;
+			const contestantsPerRow = useDoubleRow ? Math.ceil(contestants.length / 2) : contestants.length;
 
-		// Use the same spacing values as in transformContestants
-		const VERTICAL_SPACING = 450; // Match the value in transformContestants
-		const HORIZONTAL_SPACING = useDoubleRow ? 225 : 275; // Use narrower spacing when in two rows
+			// Use the same spacing values as in transformContestants
+			const VERTICAL_SPACING = 450; // Match the value in transformContestants
+			const HORIZONTAL_SPACING = useDoubleRow ? 225 : 275; // Use narrower spacing when in two rows
 
-		// Set initial positions without animation (force immediate positioning)
-		for (var i = 0; i < contestants.length; i++) {
-			var con = contestants[i];
-			con.el.style.transition = "none";
+			// Set initial positions without animation (force immediate positioning)
+			for (var i = 0; i < contestants.length; i++) {
+				var con = contestants[i];
+				con.el.style.transition = "none";
 
-			if (useDoubleRow) {
-				// Calculate row and column for two-row layout
-				let row = 0;
-				let column = i;
+				if (useDoubleRow) {
+					// Calculate row and column for two-row layout
+					let row = 0;
+					let column = i;
 
-				if (i >= contestantsPerRow) {
-					row = 1;
-					column = i - contestantsPerRow;
+					if (i >= contestantsPerRow) {
+						row = 1;
+						column = i - contestantsPerRow;
+					}
+
+					// Position based on row and column using the same approach as transformContestants
+					const xPosition = HORIZONTAL_SPACING * column + 30;
+					const yPosition = row * VERTICAL_SPACING;
+					con.el.style.transform = `translate(${xPosition}px, ${yPosition}px)`;
+				} else {
+					// Single row layout
+					const xPosition = HORIZONTAL_SPACING * i + 30;
+					con.el.style.transform = `translateX(${xPosition}px)`;
 				}
 
-				// Position based on row and column using the same approach as transformContestants
-				const xPosition = HORIZONTAL_SPACING * column + 30;
-				const yPosition = row * VERTICAL_SPACING;
-				con.el.style.transform = `translate(${xPosition}px, ${yPosition}px)`;
-			} else {
-				// Single row layout
-				const xPosition = HORIZONTAL_SPACING * i + 30;
-				con.el.style.transform = `translateX(${xPosition}px)`;
+				// Force a reflow to ensure the initial position is applied
+				con.el.offsetHeight;
 			}
 
-			// Force a reflow to ensure the initial position is applied
-			con.el.offsetHeight;
-		}
-
-		// Restore transition after a small delay
-		setTimeout(function() {
+			// Restore transition after a small delay
+			setTimeout(function() {
+				for (var i = 0; i < contestants.length; i++) {
+					contestants[i].el.style.transition = "";
+				}
+			}, 50);
+		} else {
+			// Just update the existing elements - don't recreate them
+			// This preserves the animation between positions
 			for (var i = 0; i < contestants.length; i++) {
-				contestants[i].el.style.transition = "";
+				var con = contestants[i];
+
+				// Only update score display (portraits and names remain unchanged)
+				var scoreEl = con.el.querySelector(".score");
+				if (scoreEl) {
+					scoreEl.innerText = con.oldScore;
+				}
 			}
-		}, 50);
+
+			// We still need to apply the transforms to position elements correctly
+			transformContestants();
+		}
 	}
 
 	// Setup resize handler
@@ -501,17 +514,15 @@
 		const hasChanges = updateScores(sheetData);
 
 		if (hasChanges) {
-			// Lock the UI during animation
-			if (!locked) {
-				locked = true;
-				document.body.classList.add("locked");
-				resize();
+			// First update the old score display for any animations
+			for (let i = 0; i < contestants.length; i++) {
+				const scoreEl = contestants[i].el?.querySelector(".score");
+				if (scoreEl) {
+					scoreEl.innerText = contestants[i].oldScore;
+				}
 			}
 
-			// Refresh and position contestants
-			refreshContestants();
-
-			// Sort contestants to trigger reordering animation
+			// Sort contestants by score (this changes the array order)
 			sortContestants();
 
 			// Start the animation sequence after a brief delay
@@ -528,7 +539,8 @@
 						var startRemainder = con.oldScore - Math.floor(con.oldScore);
 						var endRemainder = con.score - Math.floor(con.score);
 
-						var scoreEl = con.el.querySelector(".score");
+						var scoreEl = con.el?.querySelector(".score");
+						if (!scoreEl) continue; // Skip if element not found
 
 						var score = Math.round(ease(Math.min((dt - start) / 2000, 1), Math.floor(con.oldScore), Math.floor(con.score)));
 
