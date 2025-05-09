@@ -524,6 +524,8 @@
 
 			// Sort contestants by score (this changes the array order)
 			sortContestants();
+			// Refresh contestants to apply the new order before starting the animation
+			refreshContestants(true);
 
 			// Start the animation sequence after a brief delay
 			setTimeout(function() {
@@ -600,7 +602,15 @@
 		const sheetData = await fetchSheetData();
 		if (sheetData && sheetData.length > 0) {
 			updateScores(sheetData);
-			refreshContestants();
+
+			// Ensure oldScore matches the new score for initial display
+			// This prevents showing a stale oldScore before any animation.
+			for (var i = 0; i < contestants.length; i++) {
+				contestants[i].oldScore = contestants[i].score;
+			}
+
+			refreshContestants(); // Displays the current score (as oldScore now equals score)
+			sortContestants();    // Sort based on the current scores
 			resize();
 		} else {
 			// If no data available, initialize with default contestants
@@ -608,6 +618,7 @@
 				addContestant(null, "Contestant " + (i+1));
 			}
 			refreshContestants();
+			sortContestants();    // Sort default contestants as well
 			resize();
 		}
 	}
@@ -752,24 +763,7 @@
 		tableOverlay.style.display = 'flex';
 	}
 
-	// Clear local state and reload data from sheet
-	function resetState() {
-		if (confirm('Are you sure you want to reset the state? This will reload all data from the Google Sheet.')) {
-			// Clear localStorage
-			localStorage.removeItem('tmScoreboardState');
-
-			// Reset application variables
-			contestants = [];
-			taskColumns = [];
-			completedTasks = [];
-			lastFetchTime = null;
-
-			// Reload data from sheet
-			initialCheck();
-		}
-	}
-
-	// Setup event listeners for table toggle and reset buttons
+	// Setup event listeners for table toggle button
 	function setupButtonListeners() {
 		// Table toggle button
 		const tableToggleBtn = document.getElementById('table-toggle-button');
@@ -781,10 +775,6 @@
 			const tableOverlay = document.getElementById('scores-table-overlay');
 			tableOverlay.style.display = 'none';
 		});
-
-		// Reset state button
-		const resetStateBtn = document.getElementById('reset-state-button');
-		resetStateBtn.addEventListener('click', resetState);
 
 		// Close table when clicking outside the content
 		const tableOverlay = document.getElementById('scores-table-overlay');
