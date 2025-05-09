@@ -17,42 +17,20 @@
 	var main = document.querySelector("main");
 	var playButton = document.querySelector("#play-button");
 
-	// Load saved state from localStorage if available
-	function loadSavedState() {
-		try {
-			var savedState = localStorage.getItem('tmScoreboardState');
-			if (savedState) {
-				var state = JSON.parse(savedState);
-				contestants = state.contestants || [];
-				taskColumns = state.taskColumns || [];
-				completedTasks = state.completedTasks || [];
-				lastFetchTime = state.lastFetchTime || null;
+	// Initialize data - We've removed the loadSavedState function since it's redundant
+	function initializeApp() {
+		// Show the play button immediately
+		showPlay();
 
-				 // Reset el property which can't be properly serialized
-				for (var i = 0; i < contestants.length; i++) {
-					contestants[i].el = null;
-				}
-
-				// If we have contestants, refresh the UI
-				if (contestants.length > 0) {
-					refreshContestants();
-					resize();
-				}
-
-				return true;
-			}
-		} catch (e) {
-			console.error("Error loading saved state:", e);
-		}
-		return false;
+		// Fetch data from Google Sheets
+		return initialCheck();
 	}
 
-	// Save current state to localStorage
+	// Save minimal state to localStorage
 	function saveState() {
 		try {
+			// Only save minimal data needed for animations
 			var state = {
-				contestants: contestants,
-				taskColumns: taskColumns,
 				completedTasks: completedTasks,
 				lastFetchTime: lastFetchTime
 			};
@@ -225,6 +203,8 @@
 			// Check if the score has changed
 			if (contestant.score !== newScore) {
 				contestant.score = newScore;
+				// Also update oldScore to match when loading fresh data
+				contestant.oldScore = newScore;
 				hasChanges = true;
 			}
 
@@ -280,19 +260,6 @@
 			frameContainer.appendChild(nameLabel);
 		}
 
-		// Add task info if we have completed tasks
-		if (completedTasks.length > 0) {
-			var taskInfo = document.createElement("div");
-			taskInfo.classList.add("task-info");
-
-			// Show the last completed task and its score
-			var lastTask = completedTasks[completedTasks.length - 1];
-			var taskScore = con.taskScores[lastTask] || 0;
-
-			taskInfo.textContent = lastTask + ": " + taskScore;
-			frameContainer.appendChild(taskInfo);
-		}
-
 		fill.appendChild(shadow);
 		frameContainer.appendChild(fill);
 		frameContainer.appendChild(frame);
@@ -323,29 +290,55 @@
 
 	// Function to apply transforms to properly position contestants for animation
 	function transformContestants() {
-		// Apply transforms based on the current order
+		// Determine if we should use two rows (when there are more than 5 contestants)
+		const useDoubleRow = contestants.length > 5;
+		const contestantsPerRow = useDoubleRow ? Math.ceil(contestants.length / 2) : contestants.length;
+
+		// Define the vertical spacing constant - this controls the spacing between rows
+		const VERTICAL_SPACING = 450; // Space between rows in pixels
+
+		// Calculate the horizontal spacing to avoid overlap - adjust based on contestant count
+		const HORIZONTAL_SPACING = useDoubleRow ? 225 : 275; // Use narrower spacing when in two rows
+
+		// Apply transforms based on the current order and row layout
 		for (var i = 0; i < contestants.length; i++) {
 			var con = contestants[i];
 			if (con.el) {
 				// Ensure transition is active for animation
 				con.el.style.transition = "transform 1s ease-in-out";
 
-				// Set position based on index
-				var xPosition = 275 * i + 30;
-				con.el.style.transform = "translateX(" + xPosition + "px)";
+				// For two-row layout, first row has indices 0 to contestantsPerRow-1, second row has the rest
+				let row = 0;
+				let column = i;
+
+				if (useDoubleRow) {
+					if (i >= contestantsPerRow) {
+						row = 1;
+						column = i - contestantsPerRow;
+					}
+
+					// Calculate position based on row and column
+					const xPosition = HORIZONTAL_SPACING * column + 30;
+
+					// First row starts at y=0, second row at y=VERTICAL_SPACING
+					const yPosition = row * VERTICAL_SPACING;
+
+					con.el.style.transform = `translate(${xPosition}px, ${yPosition}px)`;
+				} else {
+					// Single row layout (original behavior)
+					const xPosition = HORIZONTAL_SPACING * i + 30;
+					con.el.style.transform = `translateX(${xPosition}px)`;
+				}
 			}
 		}
-	}
 
-	// Sort contestants and update display
-	function sortContestants() {
-		// Sort the contestants array by score (descending)
-		contestants.sort(function(a, b) {
-			return a.score - b.score;
-		});
-
-		// Update positions with animation
-		transformContestants();
+		// Return the spacing values for other functions to use
+		return {
+			useDoubleRow,
+			contestantsPerRow,
+			verticalSpacing: VERTICAL_SPACING,
+			horizontalSpacing: HORIZONTAL_SPACING
+		};
 	}
 
 	// Refresh contestant display - with improved animation support
@@ -370,20 +363,6 @@
 					if (scoreEl) {
 						scoreEl.innerText = con.oldScore;
 					}
-
-					// Update task info if needed
-					if (completedTasks.length > 0) {
-						var taskInfo = con.el.querySelector(".task-info");
-						if (!taskInfo) {
-							taskInfo = document.createElement("div");
-							taskInfo.classList.add("task-info");
-							con.el.querySelector(".frame-container").appendChild(taskInfo);
-						}
-
-						var lastTask = completedTasks[completedTasks.length - 1];
-						var taskScore = con.taskScores[lastTask] || 0;
-						taskInfo.textContent = lastTask + ": " + taskScore;
-					}
 				}
 
 				// Apply the transforms to enable animation
@@ -405,11 +384,38 @@
 			main.appendChild(cEl);
 		}
 
+		// Determine if we should use two rows layout
+		const useDoubleRow = contestants.length > 5;
+		const contestantsPerRow = useDoubleRow ? Math.ceil(contestants.length / 2) : contestants.length;
+
+		// Use the same spacing values as in transformContestants
+		const VERTICAL_SPACING = 450; // Match the value in transformContestants
+		const HORIZONTAL_SPACING = useDoubleRow ? 225 : 275; // Use narrower spacing when in two rows
+
 		// Set initial positions without animation (force immediate positioning)
 		for (var i = 0; i < contestants.length; i++) {
 			var con = contestants[i];
 			con.el.style.transition = "none";
-			con.el.style.transform = "translateX(" + (275 * i + 30) + "px)";
+
+			if (useDoubleRow) {
+				// Calculate row and column for two-row layout
+				let row = 0;
+				let column = i;
+
+				if (i >= contestantsPerRow) {
+					row = 1;
+					column = i - contestantsPerRow;
+				}
+
+				// Position based on row and column using the same approach as transformContestants
+				const xPosition = HORIZONTAL_SPACING * column + 30;
+				const yPosition = row * VERTICAL_SPACING;
+				con.el.style.transform = `translate(${xPosition}px, ${yPosition}px)`;
+			} else {
+				// Single row layout
+				const xPosition = HORIZONTAL_SPACING * i + 30;
+				con.el.style.transform = `translateX(${xPosition}px)`;
+			}
 
 			// Force a reflow to ensure the initial position is applied
 			con.el.offsetHeight;
@@ -421,6 +427,52 @@
 				contestants[i].el.style.transition = "";
 			}
 		}, 50);
+	}
+
+	// Setup resize handler
+	function resize() {
+		var w = window.innerWidth;
+		var h = window.innerHeight;
+
+		// Determine if we should use two rows (when there are more than 5 contestants)
+		const useDoubleRow = contestants.length > 5;
+		const contestantsPerRow = useDoubleRow ? Math.ceil(contestants.length / 2) : contestants.length;
+
+		// Use the same spacing constants as in transformContestants
+		const VERTICAL_SPACING = 450;
+		const HORIZONTAL_SPACING = useDoubleRow ? 225 : 275;
+
+		// Calculate width multiplier based on contestants per row and their spacing
+		var wm = HORIZONTAL_SPACING * contestantsPerRow + 30;
+
+		// Calculate height based on single row height (413px) or double row height
+		var hm = useDoubleRow ? (413 + VERTICAL_SPACING) : 413;
+
+		// Add margins by reducing the available space slightly
+		const marginPercentage = 0.85; // Use 85% of available space, leaving 15% for margins
+		w = w * marginPercentage;
+		h = h * marginPercentage;
+
+		// Calculate scaling factor to fit the screen
+		var m = Math.min(w / wm, h / hm);
+
+		// Set the scale transform
+		main.style.msTransform = `scale(${m})`;
+		main.style.transform = `scale(${m})`;
+
+		// Position the main container centered both horizontally and vertically
+		main.style.left = (window.innerWidth - wm * m) / 2 + "px";
+
+		// Calculate vertical position to center the container
+		const topPosition = (window.innerHeight - hm * m) / 2;
+		main.style.top = topPosition + "px";
+
+		// Set the correct height for the main container
+		main.style.height = hm + "px";
+
+		// For debugging
+		console.log(`Screen size: ${window.innerWidth}x${window.innerHeight}`);
+		console.log(`Container size: ${wm}x${hm}, Scale: ${m}, Position: ${main.style.left}, ${main.style.top}`);
 	}
 
 	// Animation easing function
@@ -551,22 +603,44 @@
 	// Play button handler
 	playButton.addEventListener("click", play);
 
-	// Setup resize handler
-	function resize() {
-		var w = window.innerWidth;
-		var h = window.innerHeight;
+	window.addEventListener("resize", resize);
 
-		var wm = 1400 * ((contestants.length + (locked ? 0 : 0.25)) / 5);
+	// Sort contestants and update display
+	function sortContestants() {
+		// Sort the contestants array by score (descending)
+		contestants.sort(function(a, b) {
+			return b.score - a.score; // Changed to sort in descending order (highest first)
+		});
 
-		var m = Math.min(w / wm, h / 1080);
+		// Update positions with animation
+		transformContestants();
 
-		main.style.msTransform = "scale(" + m + ")";
-		main.style.transform = "scale(" + m + ")";
-
-		main.style.left = (w - wm * m) / 2 + "px";
+		// Make the highest scoring contestant's portrait larger
+		highlightTopContestant();
 	}
 
-	window.addEventListener("resize", resize);
+	// Highlight the top contestant by making their portrait larger
+	function highlightTopContestant() {
+		if (contestants.length === 0) return;
+
+		// Reset all contestant frames to normal size
+		for (let i = 0; i < contestants.length; i++) {
+			if (contestants[i].el) {
+				const frameScaler = contestants[i].el.querySelector(".frame-scaler");
+				if (frameScaler) {
+					frameScaler.classList.remove("larger");
+				}
+			}
+		}
+
+		// Make the top contestant (index 0 after sorting) larger
+		if (contestants[0].el) {
+			const frameScaler = contestants[0].el.querySelector(".frame-scaler");
+			if (frameScaler) {
+				frameScaler.classList.add("larger");
+			}
+		}
+	}
 
 	// Setup periodic checking for updates (every 30 seconds)
 	function setupPeriodicCheck() {
@@ -589,9 +663,130 @@
 		}, 30000); // Check every 30 seconds
 	}
 
+	// Create and display the scores table
+	function createScoresTable() {
+		const tableEl = document.getElementById('scores-table');
+		tableEl.innerHTML = '';
+
+		// Sort contestants by score (descending)
+		const sortedContestants = [...contestants].sort((a, b) => b.score - a.score);
+
+		// Create header row
+		const headerRow = document.createElement('tr');
+
+		// Add Rank and Name headers
+		const rankHeader = document.createElement('th');
+		rankHeader.textContent = 'Rank';
+		headerRow.appendChild(rankHeader);
+
+		const nameHeader = document.createElement('th');
+		nameHeader.textContent = 'Contestant';
+		headerRow.appendChild(nameHeader);
+
+		// Add task headers
+		for (const task of taskColumns) {
+			const taskHeader = document.createElement('th');
+			taskHeader.textContent = task;
+			headerRow.appendChild(taskHeader);
+		}
+
+		// Add total header
+		const totalHeader = document.createElement('th');
+		totalHeader.textContent = 'Total';
+		headerRow.appendChild(totalHeader);
+
+		tableEl.appendChild(headerRow);
+
+		// Create contestant rows
+		sortedContestants.forEach((contestant, index) => {
+			const row = document.createElement('tr');
+
+			// Add rank cell
+			const rankCell = document.createElement('td');
+			rankCell.textContent = (index + 1);
+			row.appendChild(rankCell);
+
+			// Add name cell
+			const nameCell = document.createElement('td');
+			nameCell.className = 'contestant-name';
+			nameCell.textContent = contestant.name;
+			row.appendChild(nameCell);
+
+			// Add task score cells
+			for (const task of taskColumns) {
+				const scoreCell = document.createElement('td');
+				const score = contestant.taskScores[task] || 0;
+				scoreCell.textContent = score;
+
+				// Highlight the highest score for each task
+				if (score > 0 && score === Math.max(...sortedContestants.map(c => c.taskScores[task] || 0))) {
+					scoreCell.className = 'highlight';
+				}
+
+				row.appendChild(scoreCell);
+			}
+
+			// Add total score cell
+			const totalCell = document.createElement('td');
+			totalCell.textContent = contestant.score;
+			totalCell.className = 'highlight';
+			row.appendChild(totalCell);
+
+			tableEl.appendChild(row);
+		});
+
+		// Show the table overlay
+		const tableOverlay = document.getElementById('scores-table-overlay');
+		tableOverlay.style.display = 'flex';
+	}
+
+	// Clear local state and reload data from sheet
+	function resetState() {
+		if (confirm('Are you sure you want to reset the state? This will reload all data from the Google Sheet.')) {
+			// Clear localStorage
+			localStorage.removeItem('tmScoreboardState');
+
+			// Reset application variables
+			contestants = [];
+			taskColumns = [];
+			completedTasks = [];
+			lastFetchTime = null;
+
+			// Reload data from sheet
+			initialCheck();
+		}
+	}
+
+	// Setup event listeners for table toggle and reset buttons
+	function setupButtonListeners() {
+		// Table toggle button
+		const tableToggleBtn = document.getElementById('table-toggle-button');
+		tableToggleBtn.addEventListener('click', createScoresTable);
+
+		// Close table button
+		const closeTableBtn = document.getElementById('close-table-button');
+		closeTableBtn.addEventListener('click', function() {
+			const tableOverlay = document.getElementById('scores-table-overlay');
+			tableOverlay.style.display = 'none';
+		});
+
+		// Reset state button
+		const resetStateBtn = document.getElementById('reset-state-button');
+		resetStateBtn.addEventListener('click', resetState);
+
+		// Close table when clicking outside the content
+		const tableOverlay = document.getElementById('scores-table-overlay');
+		tableOverlay.addEventListener('click', function(event) {
+			if (event.target === tableOverlay) {
+				tableOverlay.style.display = 'none';
+			}
+		});
+	}
+
 	// Initialize
-	loadSavedState() || initialCheck();
+	initializeApp();
 	setupPeriodicCheck();
+	setupButtonListeners(); // Add this line to initialize button listeners
 
 	// Always show play button
 	showPlay();
